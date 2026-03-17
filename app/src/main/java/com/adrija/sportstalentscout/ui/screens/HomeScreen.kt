@@ -188,13 +188,13 @@ fun HomeScreen(
                                 ) {
                                     TestCard(
                                         title    = "Push-ups",
-                                        iconRes  = R.drawable.iconoir_gym,
+                                        iconRes  = R.drawable.ic_pushups,
                                         onClick  = { onTestSelected("Push-ups") },
                                         modifier = Modifier.weight(1f)
                                     )
                                     TestCard(
                                         title    = "Squats",
-                                        iconRes  = R.drawable.vector,
+                                        iconRes  = R.drawable.ic_squats,
                                         onClick  = { onTestSelected("Squats") },
                                         modifier = Modifier.weight(1f)
                                     )
@@ -207,13 +207,13 @@ fun HomeScreen(
                                 ) {
                                     TestCard(
                                         title    = "Bicep Curls",
-                                        iconRes  = R.drawable.file_icons_powerbuilder,
+                                        iconRes  = R.drawable.ic_bicep_curls,
                                         onClick  = { onTestSelected("Bicep Curls") },
                                         modifier = Modifier.weight(1f)
                                     )
                                     TestCard(
                                         title    = "Shoulder Press",
-                                        iconRes  = R.drawable.picon_jump,
+                                        iconRes  = R.drawable.ic_shoulder_press,
                                         onClick  = { onTestSelected("Shoulder Press") },
                                         modifier = Modifier.weight(1f)
                                     )

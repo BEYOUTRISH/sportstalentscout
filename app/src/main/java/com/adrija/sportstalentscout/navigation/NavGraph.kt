@@ -14,18 +14,8 @@ fun NavGraph(
 ) {
     NavHost(
         navController = navController,
-        startDestination = "login"
+        startDestination = "home"
     ) {
-        composable("login") {
-            LoginScreen(
-                onLoginSuccess = {
-                    navController.navigate("home") {
-                        popUpTo("login") { inclusive = true }
-                    }
-                }
-            )
-        }
-
         composable("home") {
             HomeScreen(
                 viewModel = viewModel,
@@ -36,7 +26,6 @@ fun NavGraph(
                 onProfileClick = {
                     navController.navigate("profile")
                 }
-
             )
         }
 

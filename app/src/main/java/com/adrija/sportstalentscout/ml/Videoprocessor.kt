@@ -1,11 +1,10 @@
 package com.adrija.sportstalentscout.ml
-
-import com.adrija.sportstalentscout.data.models.VideoAnalysisResult
 import com.adrija.sportstalentscout.data.models.AngleSample
 import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import com.adrija.sportstalentscout.data.models.TestResult
+import com.adrija.sportstalentscout.data.models.VideoAnalysisResult
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.vision.core.RunningMode

@@ -76,11 +76,11 @@ fun InstructionScreen(
 
     // ── Audio resource mapping (kept exactly as original) ────────────────────
     val audioResource = when (selectedTest) {
-        "Push-ups"       -> R.raw.pushups
-        "Squats"         -> R.raw.speed
-        "Bicep Curls"    -> R.raw.agility
-        "Shoulder Press" -> R.raw.endurance
-        else             -> R.raw.flexibility
+        "Push-ups"       -> R.raw.instructionrecord
+        "Squats"         -> R.raw.instructionrecord
+        "Bicep Curls"    -> R.raw.instructionrecord
+        "Shoulder Press" -> R.raw.instructionrecord
+        else             -> R.raw.instructionrecord
     }
 
     LaunchedEffect(selectedTest) {
