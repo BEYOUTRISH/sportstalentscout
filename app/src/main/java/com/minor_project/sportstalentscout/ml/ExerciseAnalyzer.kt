@@ -124,39 +124,61 @@ object ExerciseAnalyzer {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // BICEP CURL  (count_repetition_bicep_curl in ExerciseTrainer.py)
-    // Uses stageRight + stageLeft independently, then counts when both are "up"
+    // BICEP CURL
+    // Uses interior elbow angle (0-180°):
+    // - Arm extended (down): angle >= 130°
+    // - Arm curled   (up):   angle <= 75°
+    // Handles two-arm simultaneous curls, alternating curls, and slight left/right desync.
     // ─────────────────────────────────────────────────────────────────────────
     fun countBicepCurl(
         landmarks: List<LandmarkPoint?>,
         state: RepCountState
     ): RepCountState {
-        val rShoulder = getLandmark(landmarks, PoseLandmark.RIGHT_SHOULDER) ?: return state
-        val rElbow    = getLandmark(landmarks, PoseLandmark.RIGHT_ELBOW)    ?: return state
-        val rWrist    = getLandmark(landmarks, PoseLandmark.RIGHT_WRIST)    ?: return state
-        val lShoulder = getLandmark(landmarks, PoseLandmark.LEFT_SHOULDER)  ?: return state
-        val lElbow    = getLandmark(landmarks, PoseLandmark.LEFT_ELBOW)     ?: return state
-        val lWrist    = getLandmark(landmarks, PoseLandmark.LEFT_WRIST)     ?: return state
+        val rShoulder = getLandmark(landmarks, PoseLandmark.RIGHT_SHOULDER)
+        val rElbow    = getLandmark(landmarks, PoseLandmark.RIGHT_ELBOW)
+        val rWrist    = getLandmark(landmarks, PoseLandmark.RIGHT_WRIST)
+        val lShoulder = getLandmark(landmarks, PoseLandmark.LEFT_SHOULDER)
+        val lElbow    = getLandmark(landmarks, PoseLandmark.LEFT_ELBOW)
+        val lWrist    = getLandmark(landmarks, PoseLandmark.LEFT_WRIST)
 
-        val rightAngle = findAngle(rShoulder, rElbow, rWrist)
-        val leftAngle  = findAngle(lShoulder, lElbow, lWrist)
+        val rightAngle = if (rShoulder != null && rElbow != null && rWrist != null) {
+            calculateAngle(rShoulder, rElbow, rWrist)
+        } else null
+
+        val leftAngle = if (lShoulder != null && lElbow != null && lWrist != null) {
+            calculateAngle(lShoulder, lElbow, lWrist)
+        } else null
+
+        if (rightAngle == null && leftAngle == null) return state
 
         var stageRight = state.stageRight
         var stageLeft  = state.stageLeft
         var counter    = state.counter
 
-        // Stage down detection (arm extended)
-        if (rightAngle > 160 && rightAngle < 200) stageRight = "down"
-        if (leftAngle  < 200 && leftAngle  > 140) stageLeft  = "down"
+        // Down detection (arm extended: angle >= 130°)
+        if (rightAngle != null && rightAngle >= 130.0) {
+            stageRight = "down"
+        }
+        if (leftAngle != null && leftAngle >= 130.0) {
+            stageLeft = "down"
+        }
 
-        // Stage up detection (arm curled) — count when both arms complete curl
-        if (stageRight == "down" &&
-            (rightAngle > 310 || rightAngle < 60) &&
-            (leftAngle  > 310 || leftAngle  < 60) &&
-            stageLeft == "down"
-        ) {
+        // Up detection (arm curled: angle <= 75°)
+        val rCurled = rightAngle != null && rightAngle <= 75.0
+        val lCurled = leftAngle != null && leftAngle <= 75.0
+
+        if (stageRight == "down" && stageLeft == "down") {
+            // Both arms were extended: count when either (or both) completes the curl
+            if (rCurled || lCurled) {
+                stageRight = "up"
+                stageLeft  = "up"
+                counter++
+            }
+        } else if (stageRight == "down" && rCurled) {
             stageRight = "up"
-            stageLeft  = "up"
+            counter++
+        } else if (stageLeft == "down" && lCurled) {
+            stageLeft = "up"
             counter++
         }
 

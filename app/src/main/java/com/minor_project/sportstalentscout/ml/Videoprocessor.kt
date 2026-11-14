@@ -69,12 +69,15 @@ class VideoProcessor(private val context: Context) {
                                 }
 
                                 "Bicep Curls" -> {
-                                    val s = landmarks[PoseLandmark.RIGHT_SHOULDER]
-                                    val e = landmarks[PoseLandmark.RIGHT_ELBOW]
-                                    val w = landmarks[PoseLandmark.RIGHT_WRIST]
-                                    if (s != null && e != null && w != null)
-                                        ExerciseAnalyzer.findAngle(s, e, w)
-                                    else null
+                                    val rs = landmarks[PoseLandmark.RIGHT_SHOULDER]
+                                    val re = landmarks[PoseLandmark.RIGHT_ELBOW]
+                                    val rw = landmarks[PoseLandmark.RIGHT_WRIST]
+                                    val ls = landmarks[PoseLandmark.LEFT_SHOULDER]
+                                    val le = landmarks[PoseLandmark.LEFT_ELBOW]
+                                    val lw = landmarks[PoseLandmark.LEFT_WRIST]
+                                    val rAngle = if (rs != null && re != null && rw != null) ExerciseAnalyzer.calculateAngle(rs, re, rw) else null
+                                    val lAngle = if (ls != null && le != null && lw != null) ExerciseAnalyzer.calculateAngle(ls, le, lw) else null
+                                    rAngle ?: lAngle
                                 }
 
                                 "Shoulder Press" -> {
