@@ -230,8 +230,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 _testResults.value = _testResults.value + result
 
-            } catch (e: Exception) {
-                _analysisError.value = "Analysis failed: ${e.message}. Please retake the test."
+            } catch (e: Throwable) {
+                android.util.Log.e("MainViewModel", "Video assessment failed", e)
+                _analysisError.value = "Analysis failed: ${e.localizedMessage ?: "Unknown error"}. Please retake the test."
             } finally {
                 _isAssessing.value = false
             }
