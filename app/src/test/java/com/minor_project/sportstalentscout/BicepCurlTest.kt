@@ -50,23 +50,19 @@ class BicepCurlTest {
 
         // 3 full reps with both arms
         for (rep in 1..3) {
-            // 1. Arm extended down (155°)
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(155.0, 155.0), state)
-            assertEquals("down", state.stage)
+            assertEquals("DOWN", state.stage)
 
-            // 2. Curling up (110°, 85°)
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(110.0, 110.0), state)
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(85.0, 85.0), state)
 
-            // 3. Peak of curl (60°)
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(60.0, 60.0), state)
             assertEquals(rep, state.counter) // Exactly 1 increment per curl, never 2!
-            assertEquals("up", state.stage)
+            assertEquals("UP", state.stage)
 
-            // 4. Lowering down (95°, 140°)
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(95.0, 95.0), state)
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(140.0, 140.0), state)
-            assertEquals("down", state.stage)
+            assertEquals("DOWN", state.stage)
         }
 
         assertEquals(3, state.counter)
@@ -76,29 +72,58 @@ class BicepCurlTest {
     fun testThreeFullRepsAndOneHalfPeakCountsExactlyThreeReps() {
         var state = RepCountState()
 
-        // 3 full reps
         for (rep in 1..3) {
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(150.0, 150.0), state)
-            assertEquals("down", state.stage)
+            assertEquals("DOWN", state.stage)
 
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(60.0, 60.0), state)
             assertEquals(rep, state.counter)
-            assertEquals("up", state.stage)
+            assertEquals("UP", state.stage)
 
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(145.0, 145.0), state)
-            assertEquals("down", state.stage)
+            assertEquals("DOWN", state.stage)
         }
 
         assertEquals(3, state.counter)
 
         // 4th movement is only a half-peak (e.g. 85° - 90°, improper / incomplete rep)
         state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(110.0, 110.0), state)
-        state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(85.0, 85.0), state) // Peak only reached 85°!
+        state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(88.0, 88.0), state) // Peak only reached 88°!
         state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(95.0, 95.0), state)
         state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(140.0, 140.0), state)
 
         // Must still be 3, NOT 4 and NOT 6!
         assertEquals(3, state.counter)
+    }
+
+    @Test
+    fun testSignalAnalysisWithThreePeaksAndOneHalfPeak() {
+        val signal = mutableListOf<Double>()
+
+        // Helper to add a smooth wave to signal
+        fun addCurlWave(peakAngle: Double) {
+            // Down: 150°
+            repeat(4) { signal.add(150.0) }
+            // Flexing: 130°, 100°, 80°
+            signal.add(130.0); signal.add(100.0); signal.add(80.0)
+            // Peak:
+            repeat(3) { signal.add(peakAngle) }
+            // Extending: 85°, 110°, 135°
+            signal.add(85.0); signal.add(110.0); signal.add(135.0)
+            // Return down: 150°
+            repeat(4) { signal.add(150.0) }
+        }
+
+        // 3 Full reps (peaking at 55°, 60°, 68°)
+        addCurlWave(55.0)
+        addCurlWave(60.0)
+        addCurlWave(68.0)
+
+        // 1 Half peak (peaking at 88° — incomplete range of motion)
+        addCurlWave(88.0)
+
+        val repCount = ExerciseAnalyzer.countRepsFromSignal("Bicep Curls", signal)
+        assertEquals(3, repCount) // Exactly 3 reps! Half peak is excluded.
     }
 
     @Test

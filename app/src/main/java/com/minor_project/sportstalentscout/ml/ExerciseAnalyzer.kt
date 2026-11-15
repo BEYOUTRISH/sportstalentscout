@@ -35,12 +35,18 @@ data class ExerciseResult(
 
 object ExerciseAnalyzer {
 
-    // ── Angle calculation (ported from calculate_angle in ExerciseTrainer.py) ──
+    // ── Angle calculation using dot product (0° to 180°, no branch-cut or wrapping errors) ──
     fun calculateAngle(a: LandmarkPoint, b: LandmarkPoint, c: LandmarkPoint): Double {
-        val radians = atan2(c.y - b.y, c.x - b.x) - atan2(a.y - b.y, a.x - b.x)
-        var angle = abs(radians * 180.0 / PI)
-        if (angle > 180.0) angle = 360.0 - angle
-        return angle
+        val bax = (a.x - b.x).toDouble()
+        val bay = (a.y - b.y).toDouble()
+        val bcx = (c.x - b.x).toDouble()
+        val bcy = (c.y - b.y).toDouble()
+        val dot = bax * bcx + bay * bcy
+        val magBA = kotlin.math.sqrt(bax * bax + bay * bay)
+        val magBC = kotlin.math.sqrt(bcx * bcx + bcy * bcy)
+        if (magBA < 1e-6 || magBC < 1e-6) return 180.0
+        val cosTheta = (dot / (magBA * magBC)).coerceIn(-1.0, 1.0)
+        return Math.toDegrees(kotlin.math.acos(cosTheta))
     }
 
     // ── find_angle from PoseModule2.py (uses atan2 with += 360 for negatives) ──
@@ -126,75 +132,138 @@ object ExerciseAnalyzer {
     // ─────────────────────────────────────────────────────────────────────────
     // BICEP CURL
     // Uses true interior elbow angle (0-180°):
-    // - Arm extended (down): angle >= 135°
-    // - Arm curled   (up):   angle <= 65° (strict peak, ignores half-curls >= 80°)
-    // Tracks a unified exercise repetition cycle so that curling both arms
-    // always counts as ONE single rep, never double-counted.
+    // - Arm extended (down): angle >= 130°
+    // - Arm curled   (up):   angle <= 75° (full curl peak; ignores half-peaks >= 85°)
+    // Tracks active curl motion so curling both arms counts as 1 rep.
     // ─────────────────────────────────────────────────────────────────────────
     fun countBicepCurl(
         landmarks: List<LandmarkPoint?>,
         state: RepCountState
     ): RepCountState {
-        val rShoulder = getLandmark(landmarks, PoseLandmark.RIGHT_SHOULDER)
-        val rElbow    = getLandmark(landmarks, PoseLandmark.RIGHT_ELBOW)
-        val rWrist    = getLandmark(landmarks, PoseLandmark.RIGHT_WRIST)
-        val lShoulder = getLandmark(landmarks, PoseLandmark.LEFT_SHOULDER)
-        val lElbow    = getLandmark(landmarks, PoseLandmark.LEFT_ELBOW)
-        val lWrist    = getLandmark(landmarks, PoseLandmark.LEFT_WRIST)
+        val rs = getLandmark(landmarks, PoseLandmark.RIGHT_SHOULDER)
+        val re = getLandmark(landmarks, PoseLandmark.RIGHT_ELBOW)
+        val rw = getLandmark(landmarks, PoseLandmark.RIGHT_WRIST)
+        val ls = getLandmark(landmarks, PoseLandmark.LEFT_SHOULDER)
+        val le = getLandmark(landmarks, PoseLandmark.LEFT_ELBOW)
+        val lw = getLandmark(landmarks, PoseLandmark.LEFT_WRIST)
 
-        val rightAngle = if (rShoulder != null && rElbow != null && rWrist != null) {
-            calculateAngle(rShoulder, rElbow, rWrist)
-        } else null
+        val rAngle = if (rs != null && re != null && rw != null) calculateAngle(rs, re, rw) else null
+        val lAngle = if (ls != null && le != null && lw != null) calculateAngle(ls, le, lw) else null
 
-        val leftAngle = if (lShoulder != null && lElbow != null && lWrist != null) {
-            calculateAngle(lShoulder, lElbow, lWrist)
-        } else null
+        val angle = when {
+            rAngle != null && lAngle != null -> kotlin.math.min(rAngle, lAngle)
+            rAngle != null -> rAngle
+            else -> lAngle
+        } ?: return state
 
-        if (rightAngle == null && leftAngle == null) return state
-
-        var stage   = state.stage
+        var stage = state.stage ?: "DOWN"
         var counter = state.counter
 
-        // Down / Extended detection: arm(s) extended down (>= 135°)
-        val isDown = when {
-            rightAngle != null && leftAngle != null -> {
-                rightAngle >= 135.0 || leftAngle >= 135.0
-            }
-            rightAngle != null -> rightAngle >= 135.0
-            leftAngle != null  -> leftAngle >= 135.0
-            else -> false
-        }
-
-        // Up / Curled detection: strict peak (<= 65°)
-        // A half-curl (e.g. 80° - 100°) will NOT satisfy this!
-        val rCurled = rightAngle != null && rightAngle <= 65.0
-        val lCurled = leftAngle != null && leftAngle <= 65.0
-        val rBent   = rightAngle != null && rightAngle <= 80.0
-        val lBent   = leftAngle != null && leftAngle <= 80.0
-
-        val isCurled = when {
-            rightAngle != null && leftAngle != null -> {
-                // Two-arm curl: at least one reaches strict peak (<= 65°) and the other is curled (<= 80°),
-                // OR one arm is curling strictly (<= 65°) while other is resting (>= 125°) for single-arm/alternating
-                (rCurled && lBent) || (lCurled && rBent) || (rCurled && leftAngle >= 125.0) || (lCurled && rightAngle >= 125.0)
-            }
-            rightAngle != null -> rCurled
-            leftAngle != null  -> lCurled
-            else -> false
-        }
-
-        if (stage == null || stage == "up") {
-            if (isDown) {
-                stage = "down"
-            }
-        } else if (stage == "down") {
-            if (isCurled) {
-                stage = "up"
+        if (stage == "DOWN") {
+            if (angle <= 75.0) {
+                stage = "UP"
                 counter++
+            }
+        } else if (stage == "UP") {
+            if (angle >= 130.0) {
+                stage = "DOWN"
             }
         }
 
         return state.copy(counter = counter, stage = stage)
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Post-analysis Rep Counter from Smoothed Motion Waveform
+    // Matches the visual waveform peaks on the results chart 100%
+    // ─────────────────────────────────────────────────────────────────────────
+    fun countRepsFromSignal(exerciseType: String, rawAngles: List<Double>): Int {
+        if (rawAngles.size < 3) return 0
+
+        // 5-point moving average smoothing matching the waveform chart
+        val smoothed = rawAngles.windowed(size = 5, step = 1, partialWindows = true) { window ->
+            window.average()
+        }
+
+        return when (exerciseType) {
+            "Bicep Curls" -> {
+                // Down (extended): angle >= 130°
+                // Up (curled):     angle <= 75° (full curl, ignores half-peaks >= 85°)
+                var state = "DOWN"
+                var count = 0
+                for (angle in smoothed) {
+                    if (state == "DOWN") {
+                        if (angle <= 75.0) {
+                            state = "UP"
+                            count++
+                        }
+                    } else if (state == "UP") {
+                        if (angle >= 130.0) {
+                            state = "DOWN"
+                        }
+                    }
+                }
+                count
+            }
+            "Push-ups" -> {
+                // Plank (arms straight): angle >= 140°
+                // Down (chest low):      angle <= 95°
+                var state = "TOP"
+                var count = 0
+                for (angle in smoothed) {
+                    if (state == "TOP") {
+                        if (angle <= 95.0) {
+                            state = "BOTTOM"
+                        }
+                    } else if (state == "BOTTOM") {
+                        if (angle >= 140.0) {
+                            state = "TOP"
+                            count++
+                        }
+                    }
+                }
+                count
+            }
+            "Squats" -> {
+                // Standing:  angle >= 145°
+                // Squatting: angle <= 100°
+                var state = "STANDING"
+                var count = 0
+                for (angle in smoothed) {
+                    if (state == "STANDING") {
+                        if (angle <= 100.0) {
+                            state = "SQUATTING"
+                        }
+                    } else if (state == "SQUATTING") {
+                        if (angle >= 145.0) {
+                            state = "STANDING"
+                            count++
+                        }
+                    }
+                }
+                count
+            }
+            "Shoulder Press" -> {
+                // At shoulders: angle <= 95°
+                // Overhead:     angle >= 150°
+                var state = "DOWN"
+                var count = 0
+                for (angle in smoothed) {
+                    if (state == "DOWN") {
+                        if (angle >= 150.0) {
+                            state = "UP"
+                            count++
+                        }
+                    } else if (state == "UP") {
+                        if (angle <= 95.0) {
+                            state = "DOWN"
+                        }
+                    }
+                }
+                count
+            }
+            else -> 0
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
