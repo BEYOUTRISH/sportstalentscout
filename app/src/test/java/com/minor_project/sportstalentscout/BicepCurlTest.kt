@@ -164,19 +164,41 @@ class BicepCurlTest {
             // Both down
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(145.0, 145.0), state)
 
-            // Right arm curls faster (reaches 58° while left is at 78°)
+            // Right arm curls faster (reaches 58° while left is still at 78°)
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(58.0, 78.0), state)
-            assertEquals(rep, state.counter) // Counted once
+            // Left arm hasn't curled yet (average 68° > 65°), so not counted yet
+            assertEquals(rep - 1, state.counter)
 
             // Left arm catches up to 58° while right is at 65°
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(65.0, 58.0), state)
-            assertEquals(rep, state.counter) // Still rep, NOT doubled!
+            // Now both arms have curled (average 61.5° <= 65°), rep counted!
+            assertEquals(rep, state.counter)
 
             // Lower down to 140°
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(140.0, 140.0), state)
         }
 
         assertEquals(3, state.counter)
+    }
+
+    @Test
+    fun testSingleArmCurlDoesNotCountAsRep() {
+        var state = RepCountState()
+
+        // User starts with both arms extended (150°)
+        state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(150.0, 150.0), state)
+        assertEquals("DOWN", state.stage)
+
+        // User ONLY curls right arm to 45°, while left arm stays extended at 150°
+        state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(45.0, 150.0), state)
+        // Average is (45 + 150) / 2 = 97.5° > 65.0°!
+        // Counter MUST remain 0!
+        assertEquals(0, state.counter)
+        assertEquals("DOWN", state.stage)
+
+        // User returns right arm down to 150°
+        state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(150.0, 150.0), state)
+        assertEquals(0, state.counter)
     }
 
     @Test

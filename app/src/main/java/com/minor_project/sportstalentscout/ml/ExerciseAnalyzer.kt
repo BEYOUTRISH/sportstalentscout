@@ -151,7 +151,7 @@ object ExerciseAnalyzer {
         val lAngle = if (ls != null && le != null && lw != null) calculateAngle(ls, le, lw) else null
 
         val angle = when {
-            rAngle != null && lAngle != null -> kotlin.math.min(rAngle, lAngle)
+            rAngle != null && lAngle != null -> (rAngle + lAngle) / 2.0
             rAngle != null -> rAngle
             else -> lAngle
         } ?: return state
