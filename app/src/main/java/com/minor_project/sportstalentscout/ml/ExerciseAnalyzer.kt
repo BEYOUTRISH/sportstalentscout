@@ -244,13 +244,13 @@ object ExerciseAnalyzer {
                 count
             }
             "Shoulder Press" -> {
-                // At shoulders: angle <= 95°
-                // Overhead:     angle >= 150°
-                var state = if (smoothed.firstOrNull()?.let { it >= 150.0 } == true) "UP" else "DOWN"
+                // At shoulders (rack): angle <= 95°
+                // Overhead (lockout):   angle >= 145° (strict overhead lockout; rejects half-presses <= 125°)
+                var state = if (smoothed.firstOrNull()?.let { it >= 145.0 } == true) "UP" else "DOWN"
                 var count = 0
                 for (angle in smoothed) {
                     if (state == "DOWN") {
-                        if (angle >= 150.0) {
+                        if (angle >= 145.0) {
                             state = "UP"
                             count++
                         }
@@ -267,33 +267,48 @@ object ExerciseAnalyzer {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // SHOULDER PRESS  (count_repetition_shoulder_press in ExerciseTrainer.py)
-    // Stage down: rightAngle > 280 && leftAngle < 80
-    // Stage up:   rightAngle < 240 && leftAngle > 120 && stage == "down" → counter++
+    // SHOULDER PRESS
+    // Uses true interior elbow angle combined with wrist elevation verification.
+    // - Hands at shoulders (down): angle <= 95°
+    // - Hands overhead (up):       angle >= 145°
     // ─────────────────────────────────────────────────────────────────────────
     fun countShoulderPress(
         landmarks: List<LandmarkPoint?>,
         state: RepCountState
     ): RepCountState {
-        val rShoulder = getLandmark(landmarks, PoseLandmark.RIGHT_SHOULDER) ?: return state
-        val rElbow    = getLandmark(landmarks, PoseLandmark.RIGHT_ELBOW)    ?: return state
-        val rWrist    = getLandmark(landmarks, PoseLandmark.RIGHT_WRIST)    ?: return state
-        val lShoulder = getLandmark(landmarks, PoseLandmark.LEFT_SHOULDER)  ?: return state
-        val lElbow    = getLandmark(landmarks, PoseLandmark.LEFT_ELBOW)     ?: return state
-        val lWrist    = getLandmark(landmarks, PoseLandmark.LEFT_WRIST)     ?: return state
+        val rs = getLandmark(landmarks, PoseLandmark.RIGHT_SHOULDER)
+        val re = getLandmark(landmarks, PoseLandmark.RIGHT_ELBOW)
+        val rw = getLandmark(landmarks, PoseLandmark.RIGHT_WRIST)
+        val ls = getLandmark(landmarks, PoseLandmark.LEFT_SHOULDER)
+        val le = getLandmark(landmarks, PoseLandmark.LEFT_ELBOW)
+        val lw = getLandmark(landmarks, PoseLandmark.LEFT_WRIST)
 
-        val rightAngle = findAngle(rShoulder, rElbow, rWrist)
-        val leftAngle  = findAngle(lShoulder, lElbow, lWrist)
+        // Ensure wrists are in active pressing zone (near or above shoulder height)
+        val rValid = (rs != null && re != null && rw != null && rw.y <= rs.y + 0.12f)
+        val lValid = (ls != null && le != null && lw != null && lw.y <= ls.y + 0.12f)
 
-        var stage   = state.stage
+        val rAngle = if (rValid) calculateAngle(rs!!, re!!, rw!!) else null
+        val lAngle = if (lValid) calculateAngle(ls!!, le!!, lw!!) else null
+
+        val angle = when {
+            rAngle != null && lAngle != null -> (rAngle + lAngle) / 2.0
+            rAngle != null -> rAngle
+            lAngle != null -> lAngle
+            else -> 70.0 // Arms down at sides at rest
+        }
+
+        var stage = state.stage ?: "DOWN"
         var counter = state.counter
 
-        if (rightAngle > 280 && leftAngle < 80) {
-            stage = "down"
-        }
-        if (rightAngle < 240 && leftAngle > 120 && stage == "down") {
-            stage = "up"
-            counter++
+        if (stage == "DOWN") {
+            if (angle >= 145.0) {
+                stage = "UP"
+                counter++
+            }
+        } else if (stage == "UP") {
+            if (angle <= 95.0) {
+                stage = "DOWN"
+            }
         }
 
         return state.copy(counter = counter, stage = stage)

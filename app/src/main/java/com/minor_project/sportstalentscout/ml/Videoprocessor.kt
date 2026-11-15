@@ -164,12 +164,20 @@ class VideoProcessor(private val context: Context) {
                 val ls = landmarks.getOrNull(PoseLandmark.LEFT_SHOULDER)
                 val le = landmarks.getOrNull(PoseLandmark.LEFT_ELBOW)
                 val lw = landmarks.getOrNull(PoseLandmark.LEFT_WRIST)
-                val rAngle = if (rs != null && re != null && rw != null) ExerciseAnalyzer.calculateAngle(rs, re, rw) else null
-                val lAngle = if (ls != null && le != null && lw != null) ExerciseAnalyzer.calculateAngle(ls, le, lw) else null
+
+                // Ensure wrists are elevated in the active pressing zone (near or above shoulder height)
+                // Prevents false overhead detections when arms are simply resting down at sides
+                val rValid = (rs != null && re != null && rw != null && rw.y <= rs.y + 0.12f)
+                val lValid = (ls != null && le != null && lw != null && lw.y <= ls.y + 0.12f)
+
+                val rAngle = if (rValid) ExerciseAnalyzer.calculateAngle(rs!!, re!!, rw!!) else null
+                val lAngle = if (lValid) ExerciseAnalyzer.calculateAngle(ls!!, le!!, lw!!) else null
+
                 when {
                     rAngle != null && lAngle != null -> (rAngle + lAngle) / 2.0
                     rAngle != null -> rAngle
-                    else -> lAngle
+                    lAngle != null -> lAngle
+                    else -> 70.0 // Hands at sides at rest -> baseline rest rack angle
                 }
             }
 
