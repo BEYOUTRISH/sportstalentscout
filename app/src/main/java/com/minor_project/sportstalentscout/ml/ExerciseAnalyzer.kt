@@ -133,7 +133,7 @@ object ExerciseAnalyzer {
     // BICEP CURL
     // Uses true interior elbow angle (0-180°):
     // - Arm extended (down): angle >= 130°
-    // - Arm curled   (up):   angle <= 75° (full curl peak; ignores half-peaks >= 85°)
+    // - Arm curled   (up):   angle <= 65° (strict full curl; ignores half-peaks >= 72°)
     // Tracks active curl motion so curling both arms counts as 1 rep.
     // ─────────────────────────────────────────────────────────────────────────
     fun countBicepCurl(
@@ -160,7 +160,7 @@ object ExerciseAnalyzer {
         var counter = state.counter
 
         if (stage == "DOWN") {
-            if (angle <= 75.0) {
+            if (angle <= 65.0) {
                 stage = "UP"
                 counter++
             }
@@ -188,12 +188,12 @@ object ExerciseAnalyzer {
         return when (exerciseType) {
             "Bicep Curls" -> {
                 // Down (extended): angle >= 130°
-                // Up (curled):     angle <= 75° (full curl, ignores half-peaks >= 85°)
-                var state = "DOWN"
+                // Up (curled):     angle <= 65° (strict full curl, rejects half-peaks >= 72°)
+                var state = if (smoothed.firstOrNull()?.let { it <= 65.0 } == true) "UP" else "DOWN"
                 var count = 0
                 for (angle in smoothed) {
                     if (state == "DOWN") {
-                        if (angle <= 75.0) {
+                        if (angle <= 65.0) {
                             state = "UP"
                             count++
                         }
@@ -208,7 +208,7 @@ object ExerciseAnalyzer {
             "Push-ups" -> {
                 // Plank (arms straight): angle >= 140°
                 // Down (chest low):      angle <= 95°
-                var state = "TOP"
+                var state = if (smoothed.firstOrNull()?.let { it <= 95.0 } == true) "BOTTOM" else "TOP"
                 var count = 0
                 for (angle in smoothed) {
                     if (state == "TOP") {
@@ -227,7 +227,7 @@ object ExerciseAnalyzer {
             "Squats" -> {
                 // Standing:  angle >= 145°
                 // Squatting: angle <= 100°
-                var state = "STANDING"
+                var state = if (smoothed.firstOrNull()?.let { it <= 100.0 } == true) "SQUATTING" else "STANDING"
                 var count = 0
                 for (angle in smoothed) {
                     if (state == "STANDING") {
@@ -246,7 +246,7 @@ object ExerciseAnalyzer {
             "Shoulder Press" -> {
                 // At shoulders: angle <= 95°
                 // Overhead:     angle >= 150°
-                var state = "DOWN"
+                var state = if (smoothed.firstOrNull()?.let { it >= 150.0 } == true) "UP" else "DOWN"
                 var count = 0
                 for (angle in smoothed) {
                     if (state == "DOWN") {

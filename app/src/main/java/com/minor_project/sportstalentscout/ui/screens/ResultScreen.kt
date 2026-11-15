@@ -293,7 +293,8 @@ fun ResultScreen(
                         item {
 
                             ExerciseWaveformChart(
-                                samples = angleSamples
+                                samples = angleSamples,
+                                exerciseType = latestResult.testType
                             )
                         }
 
