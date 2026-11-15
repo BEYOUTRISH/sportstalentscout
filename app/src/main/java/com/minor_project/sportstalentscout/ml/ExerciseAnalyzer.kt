@@ -244,18 +244,18 @@ object ExerciseAnalyzer {
                 count
             }
             "Shoulder Press" -> {
-                // At shoulders (rack): angle <= 95°
-                // Overhead (lockout):   angle >= 145° (strict overhead lockout; rejects half-presses <= 125°)
-                var state = if (smoothed.firstOrNull()?.let { it >= 145.0 } == true) "UP" else "DOWN"
+                // At shoulders (rack): angle <= 100°
+                // Overhead (lockout):   angle >= 130° (calibrated for natural 2D camera view; rejects half-presses <= 118°)
+                var state = if (smoothed.firstOrNull()?.let { it >= 130.0 } == true) "UP" else "DOWN"
                 var count = 0
                 for (angle in smoothed) {
                     if (state == "DOWN") {
-                        if (angle >= 145.0) {
+                        if (angle >= 130.0) {
                             state = "UP"
                             count++
                         }
                     } else if (state == "UP") {
-                        if (angle <= 95.0) {
+                        if (angle <= 100.0) {
                             state = "DOWN"
                         }
                     }
@@ -269,8 +269,8 @@ object ExerciseAnalyzer {
     // ─────────────────────────────────────────────────────────────────────────
     // SHOULDER PRESS
     // Uses true interior elbow angle combined with wrist elevation verification.
-    // - Hands at shoulders (down): angle <= 95°
-    // - Hands overhead (up):       angle >= 145°
+    // - Hands at shoulders (down): angle <= 100°
+    // - Hands overhead (up):       angle >= 130°
     // ─────────────────────────────────────────────────────────────────────────
     fun countShoulderPress(
         landmarks: List<LandmarkPoint?>,
@@ -279,34 +279,47 @@ object ExerciseAnalyzer {
         val rs = getLandmark(landmarks, PoseLandmark.RIGHT_SHOULDER)
         val re = getLandmark(landmarks, PoseLandmark.RIGHT_ELBOW)
         val rw = getLandmark(landmarks, PoseLandmark.RIGHT_WRIST)
+        val rh = getLandmark(landmarks, PoseLandmark.RIGHT_HIP)
+
         val ls = getLandmark(landmarks, PoseLandmark.LEFT_SHOULDER)
         val le = getLandmark(landmarks, PoseLandmark.LEFT_ELBOW)
         val lw = getLandmark(landmarks, PoseLandmark.LEFT_WRIST)
+        val lh = getLandmark(landmarks, PoseLandmark.LEFT_HIP)
 
-        // Ensure wrists are in active pressing zone (near or above shoulder height)
-        val rValid = (rs != null && re != null && rw != null && rw.y <= rs.y + 0.12f)
-        val lValid = (ls != null && le != null && lw != null && lw.y <= ls.y + 0.12f)
+        val rMidY = if (rs != null && rh != null) (rs.y + rh.y) / 2f else (rs?.y?.plus(0.28f) ?: 0.6f)
+        val lMidY = if (ls != null && lh != null) (ls.y + lh.y) / 2f else (ls?.y?.plus(0.28f) ?: 0.6f)
 
-        val rAngle = if (rValid) calculateAngle(rs!!, re!!, rw!!) else null
-        val lAngle = if (lValid) calculateAngle(ls!!, le!!, lw!!) else null
+        val rValid = (rs != null && re != null && rw != null && rw.y < rMidY)
+        val lValid = (ls != null && le != null && lw != null && lw.y < lMidY)
+
+        val rAngle = if (rValid) calculateAngle(rs, re, rw) else null
+        val lAngle = if (lValid) calculateAngle(ls, le, lw) else null
 
         val angle = when {
-            rAngle != null && lAngle != null -> (rAngle + lAngle) / 2.0
+            rAngle != null && lAngle != null -> {
+                val avg = (rAngle + lAngle) / 2.0
+                // Require bilateral press engagement: if one arm stays idle at shoulder (< 115°), cap at 118°
+                if (kotlin.math.min(rAngle, lAngle) < 115.0) {
+                    kotlin.math.min(avg, 118.0)
+                } else {
+                    avg
+                }
+            }
             rAngle != null -> rAngle
             lAngle != null -> lAngle
-            else -> 70.0 // Arms down at sides at rest
+            else -> 80.0 // Arms down at sides at rest
         }
 
         var stage = state.stage ?: "DOWN"
         var counter = state.counter
 
         if (stage == "DOWN") {
-            if (angle >= 145.0) {
+            if (angle >= 130.0) {
                 stage = "UP"
                 counter++
             }
         } else if (stage == "UP") {
-            if (angle <= 95.0) {
+            if (angle <= 100.0) {
                 stage = "DOWN"
             }
         }

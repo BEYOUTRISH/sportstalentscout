@@ -175,27 +175,36 @@ class VideoProcessor(private val context: Context) {
                 val rs = landmarks.getOrNull(PoseLandmark.RIGHT_SHOULDER)
                 val re = landmarks.getOrNull(PoseLandmark.RIGHT_ELBOW)
                 val rw = landmarks.getOrNull(PoseLandmark.RIGHT_WRIST)
+                val rh = landmarks.getOrNull(PoseLandmark.RIGHT_HIP)
+
                 val ls = landmarks.getOrNull(PoseLandmark.LEFT_SHOULDER)
                 val le = landmarks.getOrNull(PoseLandmark.LEFT_ELBOW)
                 val lw = landmarks.getOrNull(PoseLandmark.LEFT_WRIST)
+                val lh = landmarks.getOrNull(PoseLandmark.LEFT_HIP)
 
-                // Ensure wrists are elevated in the active pressing zone (near or above shoulder height)
-                // Prevents false overhead detections when arms are simply resting down at sides
-                val rValid = (rs != null && re != null && rw != null && rw.y <= rs.y + 0.12f)
-                val lValid = (ls != null && le != null && lw != null && lw.y <= ls.y + 0.12f)
+                // Active pressing zone: wrists must be above mid-torso (not resting down at hips)
+                val rMidY = if (rs != null && rh != null) (rs.y + rh.y) / 2f else (rs?.y?.plus(0.28f) ?: 0.6f)
+                val lMidY = if (ls != null && lh != null) (ls.y + lh.y) / 2f else (ls?.y?.plus(0.28f) ?: 0.6f)
 
-                val rAngle = if (rs != null && re != null && rw != null && rw.y <= rs.y + 0.12f) {
-                    ExerciseAnalyzer.calculateAngle(rs, re, rw)
-                } else null
-                val lAngle = if (ls != null && le != null && lw != null && lw.y <= ls.y + 0.12f) {
-                    ExerciseAnalyzer.calculateAngle(ls, le, lw)
-                } else null
+                val rValid = (rs != null && re != null && rw != null && rw.y < rMidY)
+                val lValid = (ls != null && le != null && lw != null && lw.y < lMidY)
+
+                val rAngle = if (rValid) ExerciseAnalyzer.calculateAngle(rs, re, rw) else null
+                val lAngle = if (lValid) ExerciseAnalyzer.calculateAngle(ls, le, lw) else null
 
                 when {
-                    rAngle != null && lAngle != null -> (rAngle + lAngle) / 2.0
+                    rAngle != null && lAngle != null -> {
+                        val avg = (rAngle + lAngle) / 2.0
+                        // Require bilateral press engagement: if one arm stays idle at shoulder (< 115°), cap at 118°
+                        if (kotlin.math.min(rAngle, lAngle) < 115.0) {
+                            kotlin.math.min(avg, 118.0)
+                        } else {
+                            avg
+                        }
+                    }
                     rAngle != null -> rAngle
                     lAngle != null -> lAngle
-                    else -> 70.0 // Hands at sides at rest -> baseline rest rack angle
+                    else -> 80.0 // Hands resting at hips -> baseline rack position
                 }
             }
 

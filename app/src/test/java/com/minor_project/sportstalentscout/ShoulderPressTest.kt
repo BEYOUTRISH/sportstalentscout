@@ -6,13 +6,11 @@ import com.minor_project.sportstalentscout.ml.PoseLandmark
 import com.minor_project.sportstalentscout.ml.RepCountState
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import kotlin.math.cos
-import kotlin.math.sin
 
 class ShoulderPressTest {
 
     // Helper to generate a landmark list for shoulder press
-    // isOverhead: true for overhead lockout (~160°), false for shoulder rack position (~85°)
+    // isOverhead: true for overhead lockout (~140° - 160°), false for shoulder rack position (~85°)
     // armsDownAtHips: true if arms are resting straight down at sides
     private fun createShoulderPressPose(
         rightOverhead: Boolean,
@@ -21,42 +19,46 @@ class ShoulderPressTest {
     ): List<LandmarkPoint?> {
         val landmarks = MutableList<LandmarkPoint?>(33) { null }
 
-        if (armsDownAtHips) {
-            // Arms hanging straight down at hips (wrist.y > shoulder.y)
-            landmarks[PoseLandmark.RIGHT_SHOULDER] = LandmarkPoint(0.35f, 0.30f)
-            landmarks[PoseLandmark.RIGHT_ELBOW]    = LandmarkPoint(0.35f, 0.50f)
-            landmarks[PoseLandmark.RIGHT_WRIST]    = LandmarkPoint(0.35f, 0.70f)
+        // Hips at Y = 0.75
+        landmarks[PoseLandmark.RIGHT_HIP] = LandmarkPoint(0.38f, 0.75f)
+        landmarks[PoseLandmark.LEFT_HIP]  = LandmarkPoint(0.62f, 0.75f)
 
-            landmarks[PoseLandmark.LEFT_SHOULDER]  = LandmarkPoint(0.65f, 0.30f)
-            landmarks[PoseLandmark.LEFT_ELBOW]     = LandmarkPoint(0.65f, 0.50f)
-            landmarks[PoseLandmark.LEFT_WRIST]     = LandmarkPoint(0.65f, 0.70f)
+        if (armsDownAtHips) {
+            // Arms hanging straight down at hips (wrist.y > mid-torso)
+            landmarks[PoseLandmark.RIGHT_SHOULDER] = LandmarkPoint(0.35f, 0.35f)
+            landmarks[PoseLandmark.RIGHT_ELBOW]    = LandmarkPoint(0.35f, 0.55f)
+            landmarks[PoseLandmark.RIGHT_WRIST]    = LandmarkPoint(0.35f, 0.75f)
+
+            landmarks[PoseLandmark.LEFT_SHOULDER]  = LandmarkPoint(0.65f, 0.35f)
+            landmarks[PoseLandmark.LEFT_ELBOW]     = LandmarkPoint(0.65f, 0.55f)
+            landmarks[PoseLandmark.LEFT_WRIST]     = LandmarkPoint(0.65f, 0.75f)
             return landmarks
         }
 
         // Right side
-        val rShoulder = LandmarkPoint(0.35f, 0.45f)
+        val rShoulder = LandmarkPoint(0.35f, 0.40f)
         if (rightOverhead) {
-            // Extended overhead: elbow nearly straight (~165°)
+            // Extended overhead (~145° - 160°)
             landmarks[PoseLandmark.RIGHT_SHOULDER] = rShoulder
-            landmarks[PoseLandmark.RIGHT_ELBOW]    = LandmarkPoint(0.32f, 0.25f)
-            landmarks[PoseLandmark.RIGHT_WRIST]    = LandmarkPoint(0.30f, 0.05f)
+            landmarks[PoseLandmark.RIGHT_ELBOW]    = LandmarkPoint(0.32f, 0.22f)
+            landmarks[PoseLandmark.RIGHT_WRIST]    = LandmarkPoint(0.30f, 0.04f)
         } else {
-            // Bent at shoulder height: elbow bent (~85°)
+            // Bent at shoulder height (~85°)
             landmarks[PoseLandmark.RIGHT_SHOULDER] = rShoulder
-            landmarks[PoseLandmark.RIGHT_ELBOW]    = LandmarkPoint(0.20f, 0.45f)
-            landmarks[PoseLandmark.RIGHT_WRIST]    = LandmarkPoint(0.22f, 0.25f)
+            landmarks[PoseLandmark.RIGHT_ELBOW]    = LandmarkPoint(0.20f, 0.40f)
+            landmarks[PoseLandmark.RIGHT_WRIST]    = LandmarkPoint(0.22f, 0.22f)
         }
 
         // Left side
-        val lShoulder = LandmarkPoint(0.65f, 0.45f)
+        val lShoulder = LandmarkPoint(0.65f, 0.40f)
         if (leftOverhead) {
             landmarks[PoseLandmark.LEFT_SHOULDER] = lShoulder
-            landmarks[PoseLandmark.LEFT_ELBOW]    = LandmarkPoint(0.68f, 0.25f)
-            landmarks[PoseLandmark.LEFT_WRIST]    = LandmarkPoint(0.70f, 0.05f)
+            landmarks[PoseLandmark.LEFT_ELBOW]    = LandmarkPoint(0.68f, 0.22f)
+            landmarks[PoseLandmark.LEFT_WRIST]    = LandmarkPoint(0.70f, 0.04f)
         } else {
             landmarks[PoseLandmark.LEFT_SHOULDER] = lShoulder
-            landmarks[PoseLandmark.LEFT_ELBOW]    = LandmarkPoint(0.80f, 0.45f)
-            landmarks[PoseLandmark.LEFT_WRIST]    = LandmarkPoint(0.78f, 0.25f)
+            landmarks[PoseLandmark.LEFT_ELBOW]    = LandmarkPoint(0.80f, 0.40f)
+            landmarks[PoseLandmark.LEFT_WRIST]    = LandmarkPoint(0.78f, 0.22f)
         }
 
         return landmarks
@@ -125,38 +127,37 @@ class ShoulderPressTest {
             createShoulderPressPose(rightOverhead = true, leftOverhead = false),
             state
         )
-        // Average angle is ~125° < 145°, so must NOT count as a rep!
+        // Average angle is ~115° < 130°, so must NOT count as a rep!
         assertEquals(0, state.counter)
         assertEquals("DOWN", state.stage)
     }
 
     @Test
-    fun testSignalAnalysisWithThreeFullPressesAndOneHalfPress() {
+    fun testFourProperRepsOneSingleArmOneProperCountsFiveReps() {
         val signal = mutableListOf<Double>()
 
         fun addPressWave(peakAngle: Double) {
-            // At shoulders (85°)
             repeat(4) { signal.add(85.0) }
-            // Pressing up: 100°, 120°, 135°
-            signal.add(100.0); signal.add(120.0); signal.add(135.0)
-            // Peak overhead:
+            signal.add(95.0); signal.add(110.0); signal.add(125.0)
             repeat(5) { signal.add(peakAngle) }
-            // Lowering down: 135°, 120°, 100°
-            signal.add(135.0); signal.add(120.0); signal.add(100.0)
-            // Return to shoulders: 85°
+            signal.add(125.0); signal.add(110.0); signal.add(95.0)
             repeat(4) { signal.add(85.0) }
         }
 
-        // 3 Full reps (peaking at 155°, 160°, 162° >= 145°)
-        addPressWave(155.0)
-        addPressWave(160.0)
-        addPressWave(162.0)
+        // Reps 1, 2, 3, 4: 4 Proper full presses (peaking at 138° >= 130°)
+        addPressWave(138.0)
+        addPressWave(140.0)
+        addPressWave(136.0)
+        addPressWave(138.0)
 
-        // 1 Half press (peaking at 122° — incomplete overhead lockout)
-        addPressWave(122.0)
+        // 1 Single-arm press (one hand to 138°, one at 85° -> average = 111.5° < 130°)
+        addPressWave(111.5)
+
+        // Rep 5: 1 Proper full press (peaking at 138°)
+        addPressWave(138.0)
 
         val repCount = ExerciseAnalyzer.countRepsFromSignal("Shoulder Press", signal)
-        // Must count EXACTLY 3 reps, ignoring the incomplete half-press!
-        assertEquals(3, repCount)
+        // Must count EXACTLY 5 reps, properly excluding the single-arm press!
+        assertEquals(5, repCount)
     }
 }
