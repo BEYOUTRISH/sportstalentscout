@@ -23,7 +23,7 @@ class VideoProcessor(private val context: Context) {
 
     companion object {
         private const val TAG = "VideoProcessor"
-        private const val SAMPLE_FPS = 15
+        private const val SAMPLE_FPS = 10
         private const val POSE_MODEL_ASSET = "pose_landmarker_lite.task"
     }
 
@@ -57,9 +57,25 @@ class VideoProcessor(private val context: Context) {
                 var timeUs = 0L
 
                 while (timeUs <= durationMs * 1000L) {
-                    val bitmap = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
-                    if (bitmap != null) {
+                    val rawBitmap = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
                         try {
+                            retriever.getScaledFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST, 480, 640)
+                        } catch (ignored: Throwable) {
+                            retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                        }
+                    } else {
+                        retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                    } ?: retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+
+                    if (rawBitmap != null) {
+                        // MediaPipe requires software ARGB_8888 bitmap; convert if hardware-backed
+                        val bitmap = if (rawBitmap.config == Bitmap.Config.HARDWARE) {
+                            rawBitmap.copy(Bitmap.Config.ARGB_8888, false)
+                        } else {
+                            rawBitmap
+                        }
+
+                        if (bitmap != null) {
                             val landmarks = detectLandmarks(landmarker, bitmap)
 
                             if (landmarks.isNotEmpty()) {
@@ -74,8 +90,6 @@ class VideoProcessor(private val context: Context) {
                                     )
                                 }
                             }
-                        } finally {
-                            bitmap.recycle()
                         }
                     }
                     timeUs += intervalUs
@@ -170,8 +184,12 @@ class VideoProcessor(private val context: Context) {
                 val rValid = (rs != null && re != null && rw != null && rw.y <= rs.y + 0.12f)
                 val lValid = (ls != null && le != null && lw != null && lw.y <= ls.y + 0.12f)
 
-                val rAngle = if (rValid) ExerciseAnalyzer.calculateAngle(rs!!, re!!, rw!!) else null
-                val lAngle = if (lValid) ExerciseAnalyzer.calculateAngle(ls!!, le!!, lw!!) else null
+                val rAngle = if (rs != null && re != null && rw != null && rw.y <= rs.y + 0.12f) {
+                    ExerciseAnalyzer.calculateAngle(rs, re, rw)
+                } else null
+                val lAngle = if (ls != null && le != null && lw != null && lw.y <= ls.y + 0.12f) {
+                    ExerciseAnalyzer.calculateAngle(ls, le, lw)
+                } else null
 
                 when {
                     rAngle != null && lAngle != null -> (rAngle + lAngle) / 2.0
