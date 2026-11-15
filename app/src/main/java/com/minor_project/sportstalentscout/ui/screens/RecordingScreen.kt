@@ -9,9 +9,11 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.video.AudioConfig
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -45,6 +47,7 @@ fun RecordingScreen(
     var isRecording by remember { mutableStateOf(false) }
     var countdown by remember { mutableStateOf(0) }
     var recordingTime by remember { mutableStateOf(0) }
+    var selectedDuration by remember { mutableStateOf(10) }
     var recording by remember { mutableStateOf<Recording?>(null) }
     var isBackCamera by remember { mutableStateOf(true) }
 
@@ -97,7 +100,7 @@ fun RecordingScreen(
             delay(1000)
             countdown -= 1
         } else if (countdown == 0 && isRecording && recording == null) {
-            recordingTime = 10
+            recordingTime = selectedDuration
             recording = startVideoRecording(
                 controller = controller,
                 context = context,
@@ -115,7 +118,7 @@ fun RecordingScreen(
     }
 
 
-    LaunchedEffect(recordingTime) {
+    LaunchedEffect(recordingTime, isRecording) {
         if (recordingTime > 0 && isRecording) {
             delay(1000)
             recordingTime -= 1
@@ -276,7 +279,7 @@ fun RecordingScreen(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Recording: ${recordingTime}s",
+                                    text = "Recording: ${recordingTime}s / ${selectedDuration}s",
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -302,6 +305,46 @@ fun RecordingScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 if (!isRecording) {
+                    Text(
+                        text = "Choose Recording Time",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.LightGray,
+                        modifier = Modifier
+                            .align(Alignment.Start)
+                            .padding(bottom = 8.dp)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        listOf(10, 15, 20).forEach { sec ->
+                            val isSelected = selectedDuration == sec
+                            OutlinedButton(
+                                onClick = { selectedDuration = sec },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = if (isSelected) Color(0xFFCDDC39) else Color(0xFF2A2A2A),
+                                    contentColor = if (isSelected) Color(0xFF1A1A1A) else Color.White
+                                ),
+                                border = BorderStroke(
+                                    width = if (isSelected) 2.dp else 1.dp,
+                                    color = if (isSelected) Color(0xFFCDDC39) else Color(0xFF444444)
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text(
+                                    text = "${sec} sec",
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+
                     Button(
                         onClick = {
                             isRecording = true
@@ -321,17 +364,37 @@ fun RecordingScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Start Recording",
+                            text = "Start Recording (${selectedDuration}s)",
                             style = MaterialTheme.typography.titleMedium,
                             color = Color.White
                         )
                     }
                 } else {
-                    Text(
-                        text = "Recording in progress...",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White
-                    )
+                    Button(
+                        onClick = {
+                            recording?.stop()
+                            recording = null
+                            isRecording = false
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFE53935)
+                        )
+                    ) {
+                        Icon(
+                            Icons.Default.Stop,
+                            contentDescription = null,
+                            tint = Color.White
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Stop Recording (${recordingTime}s left)",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White
+                        )
+                    }
                 }
             }
         }

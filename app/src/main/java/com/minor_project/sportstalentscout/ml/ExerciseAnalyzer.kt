@@ -125,10 +125,11 @@ object ExerciseAnalyzer {
 
     // ─────────────────────────────────────────────────────────────────────────
     // BICEP CURL
-    // Uses interior elbow angle (0-180°):
-    // - Arm extended (down): angle >= 130°
-    // - Arm curled   (up):   angle <= 75°
-    // Handles two-arm simultaneous curls, alternating curls, and slight left/right desync.
+    // Uses true interior elbow angle (0-180°):
+    // - Arm extended (down): angle >= 135°
+    // - Arm curled   (up):   angle <= 65° (strict peak, ignores half-curls >= 80°)
+    // Tracks a unified exercise repetition cycle so that curling both arms
+    // always counts as ONE single rep, never double-counted.
     // ─────────────────────────────────────────────────────────────────────────
     fun countBicepCurl(
         landmarks: List<LandmarkPoint?>,
@@ -151,38 +152,49 @@ object ExerciseAnalyzer {
 
         if (rightAngle == null && leftAngle == null) return state
 
-        var stageRight = state.stageRight
-        var stageLeft  = state.stageLeft
-        var counter    = state.counter
+        var stage   = state.stage
+        var counter = state.counter
 
-        // Down detection (arm extended: angle >= 130°)
-        if (rightAngle != null && rightAngle >= 130.0) {
-            stageRight = "down"
+        // Down / Extended detection: arm(s) extended down (>= 135°)
+        val isDown = when {
+            rightAngle != null && leftAngle != null -> {
+                rightAngle >= 135.0 || leftAngle >= 135.0
+            }
+            rightAngle != null -> rightAngle >= 135.0
+            leftAngle != null  -> leftAngle >= 135.0
+            else -> false
         }
-        if (leftAngle != null && leftAngle >= 130.0) {
-            stageLeft = "down"
+
+        // Up / Curled detection: strict peak (<= 65°)
+        // A half-curl (e.g. 80° - 100°) will NOT satisfy this!
+        val rCurled = rightAngle != null && rightAngle <= 65.0
+        val lCurled = leftAngle != null && leftAngle <= 65.0
+        val rBent   = rightAngle != null && rightAngle <= 80.0
+        val lBent   = leftAngle != null && leftAngle <= 80.0
+
+        val isCurled = when {
+            rightAngle != null && leftAngle != null -> {
+                // Two-arm curl: at least one reaches strict peak (<= 65°) and the other is curled (<= 80°),
+                // OR one arm is curling strictly (<= 65°) while other is resting (>= 125°) for single-arm/alternating
+                (rCurled && lBent) || (lCurled && rBent) || (rCurled && leftAngle >= 125.0) || (lCurled && rightAngle >= 125.0)
+            }
+            rightAngle != null -> rCurled
+            leftAngle != null  -> lCurled
+            else -> false
         }
 
-        // Up detection (arm curled: angle <= 75°)
-        val rCurled = rightAngle != null && rightAngle <= 75.0
-        val lCurled = leftAngle != null && leftAngle <= 75.0
-
-        if (stageRight == "down" && stageLeft == "down") {
-            // Both arms were extended: count when either (or both) completes the curl
-            if (rCurled || lCurled) {
-                stageRight = "up"
-                stageLeft  = "up"
+        if (stage == null || stage == "up") {
+            if (isDown) {
+                stage = "down"
+            }
+        } else if (stage == "down") {
+            if (isCurled) {
+                stage = "up"
                 counter++
             }
-        } else if (stageRight == "down" && rCurled) {
-            stageRight = "up"
-            counter++
-        } else if (stageLeft == "down" && lCurled) {
-            stageLeft = "up"
-            counter++
         }
 
-        return state.copy(counter = counter, stageRight = stageRight, stageLeft = stageLeft)
+        return state.copy(counter = counter, stage = stage)
     }
 
     // ─────────────────────────────────────────────────────────────────────────

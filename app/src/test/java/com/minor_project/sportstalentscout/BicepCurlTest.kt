@@ -18,10 +18,7 @@ class BicepCurlTest {
         // Right side: Shoulder at (0.35, 0.3), Elbow at (0.35, 0.5)
         val rShoulder = LandmarkPoint(0.35f, 0.3f)
         val rElbow    = LandmarkPoint(0.35f, 0.5f)
-        // Wrist position determined by angle from shoulder-elbow vector
         val rRad = Math.toRadians(rightAngleDeg)
-        // At 180 deg (straight down): dy = +0.2, dx = 0
-        // At 0 deg (folded up): dy = -0.2, dx = 0
         val rWrist = LandmarkPoint(
             (0.35f + 0.2f * sin(rRad)).toFloat(),
             (0.5f - 0.2f * cos(rRad)).toFloat()
@@ -51,30 +48,56 @@ class BicepCurlTest {
     fun testThreeBicepCurlRepsCountAccurately() {
         var state = RepCountState()
 
-        // 3 full reps
+        // 3 full reps with both arms
         for (rep in 1..3) {
             // 1. Arm extended down (155°)
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(155.0, 155.0), state)
-            assertEquals("down", state.stageRight)
-            assertEquals("down", state.stageLeft)
+            assertEquals("down", state.stage)
 
             // 2. Curling up (110°, 85°)
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(110.0, 110.0), state)
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(85.0, 85.0), state)
 
-            // 3. Peak of curl (65°)
-            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(65.0, 65.0), state)
-            assertEquals(rep, state.counter)
-            assertEquals("up", state.stageRight)
-            assertEquals("up", state.stageLeft)
+            // 3. Peak of curl (60°)
+            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(60.0, 60.0), state)
+            assertEquals(rep, state.counter) // Exactly 1 increment per curl, never 2!
+            assertEquals("up", state.stage)
 
             // 4. Lowering down (95°, 140°)
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(95.0, 95.0), state)
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(140.0, 140.0), state)
-            assertEquals("down", state.stageRight)
-            assertEquals("down", state.stageLeft)
+            assertEquals("down", state.stage)
         }
 
+        assertEquals(3, state.counter)
+    }
+
+    @Test
+    fun testThreeFullRepsAndOneHalfPeakCountsExactlyThreeReps() {
+        var state = RepCountState()
+
+        // 3 full reps
+        for (rep in 1..3) {
+            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(150.0, 150.0), state)
+            assertEquals("down", state.stage)
+
+            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(60.0, 60.0), state)
+            assertEquals(rep, state.counter)
+            assertEquals("up", state.stage)
+
+            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(145.0, 145.0), state)
+            assertEquals("down", state.stage)
+        }
+
+        assertEquals(3, state.counter)
+
+        // 4th movement is only a half-peak (e.g. 85° - 90°, improper / incomplete rep)
+        state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(110.0, 110.0), state)
+        state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(85.0, 85.0), state) // Peak only reached 85°!
+        state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(95.0, 95.0), state)
+        state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(140.0, 140.0), state)
+
+        // Must still be 3, NOT 4 and NOT 6!
         assertEquals(3, state.counter)
     }
 
@@ -86,13 +109,13 @@ class BicepCurlTest {
             // Both down
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(145.0, 145.0), state)
 
-            // Right arm curls faster (reaches 65° while left is still at 85°)
-            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(65.0, 85.0), state)
-            assertEquals(rep, state.counter) // Counted immediately when right arm completed curl
+            // Right arm curls faster (reaches 60° while left is at 78°)
+            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(60.0, 78.0), state)
+            assertEquals(rep, state.counter) // Counted once
 
-            // Left arm catches up to 65° while right is at 70°
-            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(70.0, 65.0), state)
-            assertEquals(rep, state.counter) // Not double counted
+            // Left arm catches up to 60° while right is at 65°
+            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(65.0, 60.0), state)
+            assertEquals(rep, state.counter) // Still rep, NOT doubled!
 
             // Lower down to 140°
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(140.0, 140.0), state)
@@ -105,10 +128,10 @@ class BicepCurlTest {
     fun testPartialLockoutStillCounts() {
         var state = RepCountState()
 
-        // User does 3 reps without locking out to 180° (only lowering to 135°)
+        // User does 3 reps without locking out to 180° (only lowering to 136°)
         for (rep in 1..3) {
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(136.0, 136.0), state)
-            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(70.0, 70.0), state)
+            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(62.0, 62.0), state)
             assertEquals(rep, state.counter)
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(136.0, 136.0), state)
         }
