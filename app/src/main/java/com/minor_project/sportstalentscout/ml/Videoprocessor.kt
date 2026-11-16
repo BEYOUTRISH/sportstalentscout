@@ -146,10 +146,28 @@ class VideoProcessor(private val context: Context) {
                 val rh = landmarks.getOrNull(PoseLandmark.RIGHT_HIP)
                 val rk = landmarks.getOrNull(PoseLandmark.RIGHT_KNEE)
                 val ra = landmarks.getOrNull(PoseLandmark.RIGHT_ANKLE)
-                val lAngle = if (lh != null && lk != null && la != null) ExerciseAnalyzer.calculateAngle(lh, lk, la) else null
-                val rAngle = if (rh != null && rk != null && ra != null) ExerciseAnalyzer.calculateAngle(rh, rk, ra) else null
+                var lAngle = if (lh != null && lk != null && la != null) ExerciseAnalyzer.calculateAngle(lh, lk, la) else null
+                var rAngle = if (rh != null && rk != null && ra != null) ExerciseAnalyzer.calculateAngle(rh, rk, ra) else null
+
+                // Thigh parallelism check: if hips remain significantly above knees (> 0.08f),
+                // the thighs have not reached parallel to the floor. Penalize angle so shallow squats do not count.
+                if (lh != null && lk != null && (lk.y - lh.y) > 0.08f && lAngle != null) {
+                    lAngle = kotlin.math.max(lAngle, 95.0)
+                }
+                if (rh != null && rk != null && (rk.y - rh.y) > 0.08f && rAngle != null) {
+                    rAngle = kotlin.math.max(rAngle, 95.0)
+                }
+
                 when {
-                    lAngle != null && rAngle != null -> (lAngle + rAngle) / 2.0
+                    lAngle != null && rAngle != null -> {
+                        val avg = (lAngle + rAngle) / 2.0
+                        // Bilateral squat engagement: if one leg doesn't bend (> 120°), reject unilateral cheat
+                        if (kotlin.math.max(lAngle, rAngle) > 120.0) {
+                            kotlin.math.max(avg, 95.0)
+                        } else {
+                            avg
+                        }
+                    }
                     lAngle != null -> lAngle
                     else -> rAngle
                 }

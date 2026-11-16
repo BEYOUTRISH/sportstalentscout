@@ -117,7 +117,7 @@ fun ExerciseWaveformChart(
                 val thresholdAngle = when (exerciseType) {
                     "Bicep Curls"    -> 55.0
                     "Push-ups"       -> 95.0
-                    "Squats"         -> 100.0
+                    "Squats"         -> 88.0
                     "Shoulder Press" -> 130.0
                     else             -> null
                 }

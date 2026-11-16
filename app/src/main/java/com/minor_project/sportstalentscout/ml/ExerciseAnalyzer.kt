@@ -96,34 +96,62 @@ object ExerciseAnalyzer {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // SQUAT  (count_repetition_squat in ExerciseTrainer.py)
-    // Landmarks: 24=R_HIP, 26=R_KNEE, 28=R_ANKLE, 23=L_HIP, 25=L_KNEE, 27=L_ANKLE
-    // Stage down: rightLegAngle > 160 && leftLegAngle < 220
-    // Stage up:   rightLegAngle < 140 && leftLegAngle > 210 && stage == "down" → counter++
+    // SQUAT
+    // Uses true interior knee angle (0-180°):
+    // - Standing (up):                         angle >= 145°
+    // - Squatting (down, thighs parallel/low): angle <= 88° (strict parallel squat; rejects shallow squats >= 95°)
+    // Checks hip descent relative to knee to ensure thighs reach parallel to the floor.
     // ─────────────────────────────────────────────────────────────────────────
     fun countSquat(
         landmarks: List<LandmarkPoint?>,
         state: RepCountState
     ): RepCountState {
-        val rHip   = getLandmark(landmarks, PoseLandmark.RIGHT_HIP)   ?: return state
-        val rKnee  = getLandmark(landmarks, PoseLandmark.RIGHT_KNEE)  ?: return state
-        val rAnkle = getLandmark(landmarks, PoseLandmark.RIGHT_ANKLE) ?: return state
-        val lHip   = getLandmark(landmarks, PoseLandmark.LEFT_HIP)    ?: return state
-        val lKnee  = getLandmark(landmarks, PoseLandmark.LEFT_KNEE)   ?: return state
-        val lAnkle = getLandmark(landmarks, PoseLandmark.LEFT_ANKLE)  ?: return state
+        val rh = getLandmark(landmarks, PoseLandmark.RIGHT_HIP)
+        val rk = getLandmark(landmarks, PoseLandmark.RIGHT_KNEE)
+        val ra = getLandmark(landmarks, PoseLandmark.RIGHT_ANKLE)
 
-        val rightLegAngle = findAngle(rHip, rKnee, rAnkle)
-        val leftLegAngle  = findAngle(lHip, lKnee, lAnkle)
+        val lh = getLandmark(landmarks, PoseLandmark.LEFT_HIP)
+        val lk = getLandmark(landmarks, PoseLandmark.LEFT_KNEE)
+        val la = getLandmark(landmarks, PoseLandmark.LEFT_ANKLE)
 
-        var stage   = state.stage
+        var rAngle = if (rh != null && rk != null && ra != null) calculateAngle(rh, rk, ra) else null
+        var lAngle = if (lh != null && lk != null && la != null) calculateAngle(lh, lk, la) else null
+
+        // Thigh parallelism check: if hips remain significantly above knees (knee.y - hip.y > 0.08f),
+        // the thighs have not reached parallel to the floor. Penalize angle so shallow squats do not count.
+        if (rh != null && rk != null && (rk.y - rh.y) > 0.08f && rAngle != null) {
+            rAngle = kotlin.math.max(rAngle, 95.0)
+        }
+        if (lh != null && lk != null && (lk.y - lh.y) > 0.08f && lAngle != null) {
+            lAngle = kotlin.math.max(lAngle, 95.0)
+        }
+
+        val angle = when {
+            rAngle != null && lAngle != null -> {
+                val avg = (rAngle + lAngle) / 2.0
+                // Bilateral requirement: if one leg does not bend (> 120°), reject unilateral cheat
+                if (kotlin.math.max(rAngle, lAngle) > 120.0) {
+                    kotlin.math.max(avg, 95.0)
+                } else {
+                    avg
+                }
+            }
+            rAngle != null -> rAngle
+            else -> lAngle
+        } ?: return state
+
+        var stage = state.stage ?: "STANDING"
         var counter = state.counter
 
-        if (rightLegAngle > 160 && leftLegAngle < 220) {
-            stage = "down"
-        }
-        if (rightLegAngle < 140 && leftLegAngle > 210 && stage == "down") {
-            stage = "up"
-            counter++
+        if (stage == "STANDING") {
+            if (angle <= 88.0) {
+                stage = "SQUATTING"
+            }
+        } else if (stage == "SQUATTING") {
+            if (angle >= 145.0) {
+                stage = "STANDING"
+                counter++
+            }
         }
 
         return state.copy(counter = counter, stage = stage)
@@ -251,12 +279,12 @@ object ExerciseAnalyzer {
             }
             "Squats" -> {
                 // Standing:  angle >= 145°
-                // Squatting: angle <= 100°
-                var state = if (smoothed.firstOrNull()?.let { it <= 100.0 } == true) "SQUATTING" else "STANDING"
+                // Squatting (thighs parallel to floor): angle <= 88° (strict parallel squat; rejects shallow squats >= 95°)
+                var state = if (smoothed.firstOrNull()?.let { it <= 88.0 } == true) "SQUATTING" else "STANDING"
                 var count = 0
                 for (angle in smoothed) {
                     if (state == "STANDING") {
-                        if (angle <= 100.0) {
+                        if (angle <= 88.0) {
                             state = "SQUATTING"
                         }
                     } else if (state == "SQUATTING") {
