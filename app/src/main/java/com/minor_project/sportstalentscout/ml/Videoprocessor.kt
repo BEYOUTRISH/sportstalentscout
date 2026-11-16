@@ -159,13 +159,40 @@ class VideoProcessor(private val context: Context) {
                 val rs = landmarks.getOrNull(PoseLandmark.RIGHT_SHOULDER)
                 val re = landmarks.getOrNull(PoseLandmark.RIGHT_ELBOW)
                 val rw = landmarks.getOrNull(PoseLandmark.RIGHT_WRIST)
+                val rh = landmarks.getOrNull(PoseLandmark.RIGHT_HIP)
+
                 val ls = landmarks.getOrNull(PoseLandmark.LEFT_SHOULDER)
                 val le = landmarks.getOrNull(PoseLandmark.LEFT_ELBOW)
                 val lw = landmarks.getOrNull(PoseLandmark.LEFT_WRIST)
-                val rAngle = if (rs != null && re != null && rw != null) ExerciseAnalyzer.calculateAngle(rs, re, rw) else null
-                val lAngle = if (ls != null && le != null && lw != null) ExerciseAnalyzer.calculateAngle(ls, le, lw) else null
+                val lh = landmarks.getOrNull(PoseLandmark.LEFT_HIP)
+
+                var rAngle = if (rs != null && re != null && rw != null) ExerciseAnalyzer.calculateAngle(rs, re, rw) else null
+                var lAngle = if (ls != null && le != null && lw != null) ExerciseAnalyzer.calculateAngle(ls, le, lw) else null
+
+                // Form stability check: penalize arm raise / forward elbow swing / cheat lifts
+                if (rAngle != null && rs != null && re != null) {
+                    val rShoulderAngle = if (rh != null) ExerciseAnalyzer.calculateAngle(rh, rs, re) else 0.0
+                    if (rShoulderAngle > 50.0 || re.y <= rs.y + 0.08f) {
+                        rAngle = kotlin.math.max(rAngle, 85.0)
+                    }
+                }
+                if (lAngle != null && ls != null && le != null) {
+                    val lShoulderAngle = if (lh != null) ExerciseAnalyzer.calculateAngle(lh, ls, le) else 0.0
+                    if (lShoulderAngle > 50.0 || le.y <= ls.y + 0.08f) {
+                        lAngle = kotlin.math.max(lAngle, 85.0)
+                    }
+                }
+
                 when {
-                    rAngle != null && lAngle != null -> (rAngle + lAngle) / 2.0
+                    rAngle != null && lAngle != null -> {
+                        val avg = (rAngle + lAngle) / 2.0
+                        // Bilateral requirement: if one arm is not curling (> 95°), reject single-arm cheat
+                        if (kotlin.math.max(rAngle, lAngle) > 95.0) {
+                            kotlin.math.max(avg, 85.0)
+                        } else {
+                            avg
+                        }
+                    }
                     rAngle != null -> rAngle
                     else -> lAngle
                 }

@@ -56,7 +56,7 @@ class BicepCurlTest {
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(110.0, 110.0), state)
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(85.0, 85.0), state)
 
-            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(55.0, 55.0), state)
+            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(50.0, 50.0), state)
             assertEquals(rep, state.counter) // Exactly 1 increment per curl, never 2!
             assertEquals("UP", state.stage)
 
@@ -76,7 +76,7 @@ class BicepCurlTest {
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(150.0, 150.0), state)
             assertEquals("DOWN", state.stage)
 
-            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(55.0, 55.0), state)
+            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(50.0, 50.0), state)
             assertEquals(rep, state.counter)
             assertEquals("UP", state.stage)
 
@@ -164,14 +164,14 @@ class BicepCurlTest {
             // Both down
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(145.0, 145.0), state)
 
-            // Right arm curls faster (reaches 58° while left is still at 78°)
-            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(58.0, 78.0), state)
-            // Left arm hasn't curled yet (average 68° > 65°), so not counted yet
+            // Right arm curls faster (reaches 48° while left is still at 78°)
+            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(48.0, 78.0), state)
+            // Left arm hasn't curled yet (average 63° > 55°), so not counted yet
             assertEquals(rep - 1, state.counter)
 
-            // Left arm catches up to 58° while right is at 65°
-            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(65.0, 58.0), state)
-            // Now both arms have curled (average 61.5° <= 65°), rep counted!
+            // Left arm catches up to 50° while right is at 52°
+            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(52.0, 50.0), state)
+            // Now both arms have curled (average 51.0° <= 55°), rep counted!
             assertEquals(rep, state.counter)
 
             // Lower down to 140°
@@ -191,7 +191,7 @@ class BicepCurlTest {
 
         // User ONLY curls right arm to 45°, while left arm stays extended at 150°
         state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(45.0, 150.0), state)
-        // Average is (45 + 150) / 2 = 97.5° > 65.0°!
+        // Average is (45 + 150) / 2 = 97.5° > 55.0° and single arm check triggers!
         // Counter MUST remain 0!
         assertEquals(0, state.counter)
         assertEquals("DOWN", state.stage)
@@ -208,11 +208,64 @@ class BicepCurlTest {
         // User does 3 reps without locking out to 180° (only lowering to 136°)
         for (rep in 1..3) {
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(136.0, 136.0), state)
-            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(58.0, 58.0), state)
+            state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(52.0, 52.0), state)
             assertEquals(rep, state.counter)
             state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(136.0, 136.0), state)
         }
 
         assertEquals(3, state.counter)
+    }
+
+    @Test
+    fun testLooseFoldCheatRepDoesNotCount() {
+        val signal = mutableListOf<Double>()
+
+        fun addCurlWave(peakAngle: Double) {
+            repeat(4) { signal.add(150.0) }
+            signal.add(130.0); signal.add(100.0); signal.add(80.0)
+            repeat(5) { signal.add(peakAngle) }
+            signal.add(80.0); signal.add(100.0); signal.add(130.0)
+            repeat(4) { signal.add(150.0) }
+        }
+
+        // Reps 1 & 2: Full deep curls (45°, 48°)
+        addCurlWave(45.0)
+        addCurlWave(48.0)
+
+        // Rep 3: Cheat fold where athlete raised hand and loosely folded (63° - 65°)
+        addCurlWave(63.0)
+
+        // Reps 4 & 5: Full deep curls (46°, 50°)
+        addCurlWave(46.0)
+        addCurlWave(50.0)
+
+        // Total 5 waves in signal, but exactly 4 proper reps counted!
+        val repCount = ExerciseAnalyzer.countRepsFromSignal("Bicep Curls", signal)
+        assertEquals(4, repCount)
+    }
+
+    @Test
+    fun testArmRaiseAndFoldCheatDoesNotCount() {
+        var state = RepCountState()
+
+        // Extended posture
+        state = ExerciseAnalyzer.countBicepCurl(createPoseWithAngle(150.0, 150.0), state)
+        assertEquals("DOWN", state.stage)
+
+        // Create a pose where the athlete raises elbows up to shoulder level (cheat raise)
+        // Even if wrist is folded tight (45°), elbow elevation violates form stability
+        val cheatLandmarks = MutableList<LandmarkPoint?>(33) { null }
+        // Shoulder at (0.35, 0.30), Elbow raised to (0.35, 0.32) -> elbow.y <= shoulder.y + 0.08f
+        cheatLandmarks[PoseLandmark.RIGHT_SHOULDER] = LandmarkPoint(0.35f, 0.30f)
+        cheatLandmarks[PoseLandmark.RIGHT_ELBOW]    = LandmarkPoint(0.35f, 0.32f)
+        cheatLandmarks[PoseLandmark.RIGHT_WRIST]    = LandmarkPoint(0.35f, 0.20f)
+        cheatLandmarks[PoseLandmark.LEFT_SHOULDER]  = LandmarkPoint(0.65f, 0.30f)
+        cheatLandmarks[PoseLandmark.LEFT_ELBOW]     = LandmarkPoint(0.65f, 0.32f)
+        cheatLandmarks[PoseLandmark.LEFT_WRIST]     = LandmarkPoint(0.65f, 0.20f)
+
+        state = ExerciseAnalyzer.countBicepCurl(cheatLandmarks, state)
+        // Must remain 0 because arm raise is penalized!
+        assertEquals(0, state.counter)
+        assertEquals("DOWN", state.stage)
     }
 }

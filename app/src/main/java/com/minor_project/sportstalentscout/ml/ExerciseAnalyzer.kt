@@ -133,7 +133,7 @@ object ExerciseAnalyzer {
     // BICEP CURL
     // Uses true interior elbow angle (0-180°):
     // - Arm extended (down): angle >= 130°
-    // - Arm curled   (up):   angle <= 65° (strict full curl; ignores half-peaks >= 72°)
+    // - Arm curled   (up):   angle <= 55° (strict full curl; rejects loose folds / arm raises >= 60°)
     // Tracks active curl motion so curling both arms counts as 1 rep.
     // ─────────────────────────────────────────────────────────────────────────
     fun countBicepCurl(
@@ -143,15 +143,40 @@ object ExerciseAnalyzer {
         val rs = getLandmark(landmarks, PoseLandmark.RIGHT_SHOULDER)
         val re = getLandmark(landmarks, PoseLandmark.RIGHT_ELBOW)
         val rw = getLandmark(landmarks, PoseLandmark.RIGHT_WRIST)
+        val rh = getLandmark(landmarks, PoseLandmark.RIGHT_HIP)
+
         val ls = getLandmark(landmarks, PoseLandmark.LEFT_SHOULDER)
         val le = getLandmark(landmarks, PoseLandmark.LEFT_ELBOW)
         val lw = getLandmark(landmarks, PoseLandmark.LEFT_WRIST)
+        val lh = getLandmark(landmarks, PoseLandmark.LEFT_HIP)
 
-        val rAngle = if (rs != null && re != null && rw != null) calculateAngle(rs, re, rw) else null
-        val lAngle = if (ls != null && le != null && lw != null) calculateAngle(ls, le, lw) else null
+        var rAngle = if (rs != null && re != null && rw != null) calculateAngle(rs, re, rw) else null
+        var lAngle = if (ls != null && le != null && lw != null) calculateAngle(ls, le, lw) else null
+
+        // Form stability check: penalize arm raise / forward elbow swing / cheat lifts
+        if (rAngle != null && rs != null && re != null) {
+            val rShoulderAngle = if (rh != null) calculateAngle(rh, rs, re) else 0.0
+            if (rShoulderAngle > 50.0 || re.y <= rs.y + 0.08f) {
+                rAngle = kotlin.math.max(rAngle, 85.0)
+            }
+        }
+        if (lAngle != null && ls != null && le != null) {
+            val lShoulderAngle = if (lh != null) calculateAngle(lh, ls, le) else 0.0
+            if (lShoulderAngle > 50.0 || le.y <= ls.y + 0.08f) {
+                lAngle = kotlin.math.max(lAngle, 85.0)
+            }
+        }
 
         val angle = when {
-            rAngle != null && lAngle != null -> (rAngle + lAngle) / 2.0
+            rAngle != null && lAngle != null -> {
+                val avg = (rAngle + lAngle) / 2.0
+                // Require bilateral engagement: if one arm is not curling (> 95°), penalize
+                if (kotlin.math.max(rAngle, lAngle) > 95.0) {
+                    kotlin.math.max(avg, 85.0)
+                } else {
+                    avg
+                }
+            }
             rAngle != null -> rAngle
             else -> lAngle
         } ?: return state
@@ -160,7 +185,7 @@ object ExerciseAnalyzer {
         var counter = state.counter
 
         if (stage == "DOWN") {
-            if (angle <= 65.0) {
+            if (angle <= 55.0) {
                 stage = "UP"
                 counter++
             }
@@ -188,12 +213,12 @@ object ExerciseAnalyzer {
         return when (exerciseType) {
             "Bicep Curls" -> {
                 // Down (extended): angle >= 130°
-                // Up (curled):     angle <= 65° (strict full curl, rejects half-peaks >= 72°)
-                var state = if (smoothed.firstOrNull()?.let { it <= 65.0 } == true) "UP" else "DOWN"
+                // Up (curled):     angle <= 55° (strict full athletic curl, rejects loose folds / cheat raises >= 60°)
+                var state = if (smoothed.firstOrNull()?.let { it <= 55.0 } == true) "UP" else "DOWN"
                 var count = 0
                 for (angle in smoothed) {
                     if (state == "DOWN") {
-                        if (angle <= 65.0) {
+                        if (angle <= 55.0) {
                             state = "UP"
                             count++
                         }
